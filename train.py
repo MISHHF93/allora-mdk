@@ -5,20 +5,22 @@ Unified Model Training Framework — Production-Ready (Custom Exceptions + Robus
 - Interactive Mode: Flexible experimentation with non-interactive option for CI
 - Error Handling: Centralized custom exceptions with consistent exit codes
 
+This revision addresses the review items:
+• Competition model selection via --model (no longer hardcoded Prophet)
+• Optional .env support (dotenv) to load TOKEN, HORIZON, ETH_CSV, MODEL, ASSET, etc.
+• Training metrics (RMSE, MAPE) printed when available (safe fallbacks)
+• Asset-generalized CSV discovery (ETH/BTC/SOL/ARB via --asset/ENV)
+• Retry logic for forecast generation (--retry)
+• More granular logging of model details/config
+• Self-tests expanded (no breaking changes to existing tests)
+
 Project layout assumed from your tree:
 .
 ├── configs.py
 ├── data/ ... (package; has __init__.py)
-├── models/ ... (namespace package; no __init__ required)
+├── models/ ... (namespace package)
 ├── utils/ ... (package; has __init__.py)
 └── ...
-
-Key fixes in this revision:
-- Prefer the **project root** on sys.path (not a non-existent scripts/).
-- Load model list from `configs.py` at repo root; avoid importing unrelated site-packages `configs`.
-- Defer imports and add fallbacks (e.g., `data/utils/data_preprocessing.py` lacks __init__.py in `utils/` → load by filepath).
-- Hardened environment setup to prevent `SystemExit: 78` — create/fallback for artifacts dir and (optionally) auto-create data dir instead of failing.
-- Keep self-tests; add env/IO tests; no changes to existing tests.
 """
 
 from __future__ import annotations
@@ -57,16 +59,23 @@ if str(ROOT) in sys.path:
         pass
 sys.path.insert(0, str(ROOT))
 
-DATA_DIR = ROOT / "data"  # your repo has data/, not data/sets/
+DATA_DIR = ROOT / "data"  # repo has data/, not data/sets/
 ARTIFACTS_DIR = ROOT / "artifacts"
 
-# Competition constraints
+# Competition defaults
 FORECAST_DAYS = 30
 MIN_HISTORY_YEARS = 3
 CONFIDENCE_FLOOR = 0.85
-# Default ETH CSV: if not provided, we will try to auto-detect a CSV in data/ or data/utils/
-ETH_DATA_FILE = "eth.csv"  # can be overridden by ENV ETH_CSV
 DEFAULT_SEED = 42
+DEFAULT_ASSET = "ETH"  # can be overridden by --asset or ENV ASSET
+DEFAULT_DATASET_NAME = "eth.csv"  # ENV ETH_CSV or --dataset can override
+
+# .env support (optional)
+try:  # pragma: no cover (optional dependency)
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv(dotenv_path=ROOT / ".env", override=False)
+except Exception:
+    pass
 
 
 # ---- Custom Exceptions & Exit Codes ----------------------------------------
@@ -167,7 +176,7 @@ def _import_preprocess() -> Any:
         return _import_module_from_path("data_preprocessing", path).preprocess_data  # type: ignore
 
 
-# ---- Load model list robustly (fixes ImportError: cannot import name 'models')
+# ---- Model list loader (avoids site-packages 'configs') ---------------------
 MODELS: List[str]
 
 
@@ -175,7 +184,7 @@ def _load_models_list() -> List[str]:
     """Attempt to load model names from root-level `configs.py`.
 
     Order of attempts:
-      1) import configs (must be your root module due to ROOT on sys.path) and read 'models'/'MODELS'/'model_list'
+      1) import configs and read 'models'/'MODELS'/'model_list'
       2) fallback to ['prophet']
     """
     try:
@@ -188,22 +197,21 @@ def _load_models_list() -> List[str]:
     except Exception:
         pass
 
-    # Safe default (also used by competition mode)
     return ["prophet"]
 
 
 MODELS = _load_models_list()
 
 
-# ---- Core Validation Functions ----------------------------------------------
+# ---- Environment & validation ----------------------------------------------
+
 def validate_environment(ensure_data_dir: bool = False) -> None:
     """Ensure required directories exist & are writable.
 
     - Always attempts to create ARTIFACTS_DIR; if it fails (e.g., RO filesystem),
-      it falls back to CWD/artifacts, then to a temp directory and updates the
-      global ARTIFACTS_DIR accordingly.
-    - If ensure_data_dir=True, attempts to create DATA_DIR (instead of failing on
-      missing); only raises if creation is impossible.
+      it falls back to CWD/artifacts, then a temp directory and updates ARTIFACTS_DIR.
+    - If ensure_data_dir=True, attempts to create DATA_DIR (instead of failing);
+      raises only if creation is impossible.
     """
     import tempfile
     global ARTIFACTS_DIR, DATA_DIR
@@ -240,34 +248,23 @@ def validate_environment(ensure_data_dir: bool = False) -> None:
 
 
 def validate_dataframe(df: pd.DataFrame, competition_mode: bool = False) -> Tuple[bool, str]:
-    """Robust dataframe validation.
-
-    In competition mode, *both* 'timestamp' and 'close' are required, with strict
-    timestamp checks. In interactive mode, 'close' is required; if 'timestamp' is
-    present, it is validated as well.
-    """
+    """Robust dataframe validation."""
     if df is None or df.empty:
         return False, "Empty dataframe"
 
     cols = _lower_cols_map(df)
 
-    if competition_mode:
-        required = ["timestamp", "close"]
-    else:
-        required = ["close"]
-
+    required = ["close"] if not competition_mode else ["timestamp", "close"]
     for name in required:
         if name not in cols:
             return False, f"Missing required column: '{name}'"
 
-    # Price checks
     close = df[cols["close"]]
     if close.isnull().any():
         return False, "NaN values in price data"
     if (close <= 0).any():
         return False, "Non-positive prices detected"
 
-    # Timestamp checks (strict in competition mode; opportunistic otherwise)
     if competition_mode or ("timestamp" in cols):
         ts = pd.to_datetime(df[cols["timestamp"]], errors="coerce")
         if ts.isnull().any():
@@ -281,7 +278,7 @@ def validate_dataframe(df: pd.DataFrame, competition_mode: bool = False) -> Tupl
 
 
 def calculate_timespan(df: pd.DataFrame) -> float:
-    """Calculate timespan in days with multiple fallbacks (case-insensitive)."""
+    """Calculate timespan in days with multiple fallbacks."""
     try:
         if isinstance(df.index, pd.DatetimeIndex):
             delta = df.index.max() - df.index.min()
@@ -289,19 +286,17 @@ def calculate_timespan(df: pd.DataFrame) -> float:
             cols = _lower_cols_map(df)
             if "timestamp" in cols:
                 ts = pd.to_datetime(df[cols["timestamp"]], errors="coerce").dropna()
-                if len(ts) >= 2:
-                    delta = ts.max() - ts.min()
-                else:
-                    delta = timedelta(days=len(df))
+                delta = ts.max() - ts.min() if len(ts) >= 2 else timedelta(days=len(df))
             else:
                 delta = timedelta(days=len(df))
         return float(delta.total_seconds() / 86400.0)
-    except Exception as e:  # pragma: no cover (safety net)
+    except Exception as e:  # pragma: no cover
         warnings.warn(f"Timespan calculation fell back to row count: {e}")
         return float(len(df))
 
 
 # ---- Confidence & Forecast Utilities ----------------------------------------
+
 def calculate_confidence(predictions: List[float]) -> float:
     """Confidence inversely related to annualized volatility with safety nets."""
     if predictions is None or len(predictions) < 2:
@@ -321,7 +316,6 @@ def calculate_confidence(predictions: List[float]) -> float:
     if not np.isfinite(volatility):
         return CONFIDENCE_FLOOR
 
-    # Slightly softened curve to avoid saturating at 0.99 for flat series
     confidence = float(np.exp(-0.75 * volatility))
     return float(np.clip(round(confidence, 2), CONFIDENCE_FLOOR, 0.99))
 
@@ -332,13 +326,9 @@ def normalize_forecast(
 ) -> List[float]:
     """Convert any forecast format to standardized list[float] with NaN handling and padding."""
     try:
-        # Extract numeric array
         if isinstance(forecast, pd.DataFrame):
             num_cols = forecast.select_dtypes(include=[np.number]).columns
-            if len(num_cols) == 0:
-                values = pd.to_numeric(forecast.iloc[:, 0], errors="coerce")
-            else:
-                values = forecast[num_cols[0]]
+            values = pd.to_numeric(forecast.iloc[:, 0], errors="coerce") if len(num_cols) == 0 else forecast[num_cols[0]]
             arr = values.to_numpy(dtype=np.float64)
         elif isinstance(forecast, pd.Series):
             arr = pd.to_numeric(forecast, errors="coerce").to_numpy(dtype=np.float64)
@@ -349,7 +339,6 @@ def normalize_forecast(
     except Exception as e:
         raise ForecastError(f"Failed to coerce forecast to numeric array: {e}") from e
 
-    # Handle invalids: forward-fill; seed first value if needed
     if arr.size == 0 or np.isnan(arr).all():
         arr = np.full(shape=(days,), fill_value=1.0, dtype=np.float64)
     else:
@@ -359,7 +348,6 @@ def normalize_forecast(
             elif (not np.isfinite(arr[i])) or (arr[i] <= 0):
                 arr[i] = arr[i - 1]
 
-    # Pad / truncate to desired horizon
     if arr.shape[0] < days:
         pad_val = arr[-1] if arr.shape[0] > 0 else 1.0
         arr = np.pad(arr, (0, days - arr.shape[0]), constant_values=pad_val)
@@ -372,55 +360,79 @@ def normalize_forecast(
     return out
 
 
+def _forecast_with_retry(model: Any, days: int, *, max_retries: int = 2) -> List[float]:
+    """Call model.forecast(days) with simple retry/fallback logic."""
+    last_err: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            raw = model.forecast(days)
+            return normalize_forecast(raw, days=days)
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            if attempt < max_retries:
+                print_colored(f"Retrying forecast (attempt {attempt+2}/{max_retries+1}) due to: {e}", "warning")
+            else:
+                raise ForecastError(f"Forecast failed after {max_retries+1} attempt(s): {e}")
+    # unreachable, but keeps type checkers happy
+    raise ForecastError(str(last_err) if last_err else "unknown forecast error")
+
+
 # ---- Data Loading & Selection -----------------------------------------------
 
-def _resolve_competition_csv() -> Path:
-    """Find an ETH CSV from common locations/patterns.
+def _resolve_asset_csv(asset: str | None, dataset_path: str | None) -> Path:
+    """Resolve CSV path for a given asset symbol (ETH/BTC/SOL/ARB...).
+
     Resolution order:
-      1) ENV ETH_CSV if set
-      2) ROOT/data/ETH_DATA_FILE (default 'eth.csv')
-      3) any file matching 'eth*.csv' in ROOT/data
-      4) any file matching '*Ethereum*historical_data_coinmarketcap*.csv' in ROOT/data or ROOT/data/utils
+      1) explicit dataset_path (CLI --dataset or ENV ETH_CSV)
+      2) ROOT/data/<asset>.csv (case-insensitive)
+      3) any ROOT/data file matching '<asset>*\.csv'
+      4) any file matching '*<AssetName>*historical_data_coinmarketcap*.csv' in ROOT/data or ROOT/data/utils
     """
-    env_path = os.getenv("ETH_CSV")
+    # 1) explicit path
+    env_path = dataset_path or os.getenv("ETH_CSV")
     if env_path:
         p = Path(env_path)
         if p.exists():
             return p
-    candidate = DATA_DIR / ETH_DATA_FILE
+
+    # Normalize asset
+    sym = (asset or os.getenv("ASSET") or DEFAULT_ASSET).strip().lower()
+
+    # 2) direct <asset>.csv
+    candidate = (DATA_DIR / f"{sym}.csv")
     if candidate.exists():
         return candidate
 
-    # Search patterns
-    for pat in ("eth*.csv",):
-        for f in DATA_DIR.glob(pat):
+    # 3) generic matches in data/
+    for f in DATA_DIR.glob(f"{sym}*.csv"):
+        if f.is_file():
+            return f
+
+    # 4) coinmarketcap-style names
+    name_hint = sym.upper()
+    for base in (DATA_DIR, DATA_DIR / "utils"):
+        for f in base.glob(f"*{name_hint}*historical_data_coinmarketcap*.csv"):
             if f.is_file():
                 return f
-    for pat in ("*Ethereum*historical_data_coinmarketcap*.csv",):
-        for base in (DATA_DIR, DATA_DIR / "utils"):
-            for f in base.glob(pat):
-                if f.is_file():
-                    return f
 
     raise DataError(
-        "Cannot locate ETH CSV. Set ETH_CSV env var or place eth.csv under data/ "
-        "(we also look for *Ethereum*historical_data_coinmarketcap*.csv)."
+        f"Cannot locate CSV for asset '{sym}'. Set --dataset or ETH_CSV env var, or place {sym}.csv under data/."
     )
 
 
-def load_competition_data() -> pd.DataFrame:
-    """Load and validate ETH data for competition submission."""
-    eth_path = _resolve_competition_csv()
+def load_competition_data(asset: str | None = None, dataset_path: str | None = None) -> pd.DataFrame:
+    """Load and validate asset price data for competition submission."""
+    csv_path = _resolve_asset_csv(asset, dataset_path)
 
     try:
         CSVLoader = importlib.import_module("data.csv_loader").CSVLoader  # type: ignore
-        df = CSVLoader.load_csv(eth_path)
+        df = CSVLoader.load_csv(csv_path)
     except Exception as e:  # propagate as DataError
         raise DataError(f"Failed to load competition CSV: {e}") from e
 
     is_valid, validation_msg = validate_dataframe(df, competition_mode=True)
     if not is_valid:
-        raise DataError(f"Invalid ETH data: {validation_msg}")
+        raise DataError(f"Invalid data: {validation_msg}")
 
     # Check history length (warning only)
     span_days = calculate_timespan(df)
@@ -450,12 +462,12 @@ def select_data(
 ) -> pd.DataFrame:
     """Data selection with competition mode override and non-interactive support."""
     if competition_mode:
-        return load_competition_data()
+        # The competition path uses the dedicated loader
+        return load_competition_data(asset=None, dataset_path=None)
 
     default_end_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
     if non_interactive:
-        # Resolve defaults for CI/headless runs
         src = (source or "csv").lower()
         try:
             if src == "stock":
@@ -519,7 +531,8 @@ def select_data(
 def select_models(competition_mode: bool = False, *, non_interactive: bool = False, use_all: bool = True) -> List[str]:
     """Model selection with competition mode override and non-interactive support."""
     if competition_mode:
-        return ["prophet"]  # Competition requires Prophet
+        # The specific model will be supplied via CLI/ENV when running competition mode
+        return ["prophet"]  # placeholder; caller will override
 
     if non_interactive:
         return MODELS if use_all else MODELS[:1]
@@ -548,6 +561,44 @@ def select_models(competition_mode: bool = False, *, non_interactive: bool = Fal
     raise ModelError("Invalid model selection; expected '1' or '2'")
 
 
+# ---- Metrics utilities ------------------------------------------------------
+
+def _extract_target(df: pd.DataFrame) -> pd.Series:
+    cols = _lower_cols_map(df)
+    return pd.to_numeric(df[cols["close"]], errors="coerce")
+
+
+def _compute_basic_metrics(y_true: Union[pd.Series, np.ndarray, List[float]],
+                           y_pred: Union[pd.Series, np.ndarray, List[float]]) -> Dict[str, float]:
+    yt = np.asarray(pd.to_numeric(pd.Series(y_true), errors="coerce"), dtype=float)
+    yp = np.asarray(pd.to_numeric(pd.Series(y_pred), errors="coerce"), dtype=float)
+    n = min(len(yt), len(yp))
+    if n == 0:
+        return {"rmse": float("nan"), "mape": float("nan")}
+    yt, yp = yt[:n], yp[:n]
+    with np.errstate(divide='ignore', invalid='ignore'):
+        rmse = float(np.sqrt(np.nanmean((yp - yt) ** 2)))
+        mape = float(np.nanmean(np.abs((yp - yt) / np.where(yt == 0, np.nan, yt))) * 100.0)
+    return {"rmse": round(rmse, 6), "mape": round(mape, 4)}
+
+
+def _in_sample_metrics_if_available(model: Any, data: pd.DataFrame) -> Dict[str, float] | None:
+    """Try to compute in-sample metrics using model.predict/ predict_in_sample.
+    Returns None if the model doesn't support it or on failure.
+    """
+    y_true = _extract_target(data)
+    try:
+        if hasattr(model, "predict"):
+            y_pred = model.predict(data)  # type: ignore[attr-defined]
+        elif hasattr(model, "predict_in_sample"):
+            y_pred = model.predict_in_sample(data)  # type: ignore[attr-defined]
+        else:
+            return None
+        return _compute_basic_metrics(y_true, y_pred)
+    except Exception:
+        return None
+
+
 # ---- Competition Artifact Packaging -----------------------------------------
 
 def _safe_range_from_data(data: pd.DataFrame) -> Tuple[str | None, str | None]:
@@ -565,6 +616,9 @@ def package_competition_artifacts(
     model: Any,
     forecast: List[float],
     data: pd.DataFrame,
+    *,
+    asset: str,
+    csv_path: str,
 ) -> Dict[str, Any]:
     """Create standardized artifact package for competition submission."""
     span_days = calculate_timespan(data)
@@ -577,7 +631,8 @@ def package_competition_artifacts(
         "confidence": confidence,
         "metadata": {
             "trained_at": datetime.now(timezone.utc).isoformat(),
-            "data_source": str(_resolve_competition_csv()) if os.getenv("ETH_CSV") else ETH_DATA_FILE,
+            "asset": asset,
+            "data_source": csv_path,
             "data_range": {"start": start_iso, "end": end_iso},
             "metrics": {
                 "training_rows": int(len(data)),
@@ -622,46 +677,58 @@ def save_artifacts(results: Dict[str, Any], competition_mode: bool = False) -> P
 
 # ---- Main Training Pipelines ------------------------------------------------
 
-def run_competition_mode() -> Dict[str, Any]:
+def run_competition_mode(*, model_name: str, asset: str, dataset: str | None, horizon: int, retries: int) -> Dict[str, Any]:
     """End-to-end competition submission pipeline."""
     set_global_seed()
-    # Ensure dirs; create data dir if missing so subsequent steps have a place to look
     validate_environment(ensure_data_dir=True)
 
     # Load and validate data
-    data = load_competition_data()
+    data = load_competition_data(asset=asset, dataset_path=dataset)
 
     # Train model
     try:
         ModelFactory = importlib.import_module("models.model_factory").ModelFactory  # type: ignore
-        model = ModelFactory().create_model("prophet")
+        model = ModelFactory().create_model(model_name)
     except Exception as e:
         raise ModelError(f"Model creation failed: {e}") from e
+
+    # Log model details if available
+    try:
+        mname = type(model).__name__
+        mconf = getattr(model, "config", None) or getattr(model, "params", None)
+        if mconf is not None:
+            print_colored(f"Model: {mname} | Config keys: {list(mconf) if isinstance(mconf, dict) else 'n/a'}", "info")
+        else:
+            print_colored(f"Model: {mname}", "info")
+    except Exception:
+        pass
 
     try:
         model.train(data)
     except Exception as e:
         raise ModelError(f"Training failed: {e}") from e
 
-    # Generate forecast (normalized & padded to exact horizon)
-    try:
-        raw_forecast = model.forecast(FORECAST_DAYS)
-    except Exception as e:
-        raise ForecastError(f"Model forecast failed: {e}") from e
+    # Generate forecast with retry
+    forecast = _forecast_with_retry(model, horizon, max_retries=retries)
 
-    forecast = normalize_forecast(raw_forecast, days=FORECAST_DAYS)
-
-    if len(forecast) != FORECAST_DAYS:
+    if len(forecast) != horizon:
         raise ForecastError(
-            f"Forecast length mismatch: expected {FORECAST_DAYS}, got {len(forecast)}"
+            f"Forecast length mismatch: expected {horizon}, got {len(forecast)}"
         )
 
+    # Optional in-sample metrics
+    ins = _in_sample_metrics_if_available(model, data)
+    if ins:
+        print_colored(f"Training metrics — RMSE: {ins['rmse']}, MAPE: {ins['mape']}%", "info")
+
     # Package and save artifacts
-    artifacts = package_competition_artifacts(model, forecast, data)
+    csv_resolved = _resolve_asset_csv(asset, dataset)
+    artifacts = package_competition_artifacts(model, forecast, data, asset=asset, csv_path=str(csv_resolved))
     save_path = save_artifacts(artifacts, competition_mode=True)
 
     print_colored(
-        f"✓ Competition submission package saved to: {save_path}\n"
+        f"✓ Competition submission saved: {save_path}\n"
+        f"• Asset: {asset}\n"
         f"• Confidence: {artifacts['confidence']:.2f}\n"
         f"• Forecast range: {forecast[0]:.2f} to {forecast[-1]:.2f}",
         "success",
@@ -680,10 +747,10 @@ def run_interactive_mode(
     csv: str | None = None,
     horizon: int = FORECAST_DAYS,
     use_all_models: bool = True,
+    retries: int = 2,
 ) -> Dict[str, Dict[str, Any]]:
     """Interactive/CI training pipeline."""
     set_global_seed()
-    # For interactive/CI we don't require data dir; still ensure artifacts are writable
     validate_environment(ensure_data_dir=False)
 
     # Lazy import here so self-tests can run without project deps
@@ -736,6 +803,18 @@ def run_interactive_mode(
             logger.debug(traceback.format_exc())
             continue
 
+        # Log model details
+        try:
+            mname = type(model).__name__
+            mconf = getattr(model, "config", None) or getattr(model, "params", None)
+            if mconf is not None:
+                keys = list(mconf) if isinstance(mconf, dict) else None
+                print_colored(f"Model: {mname} | Config keys: {keys}", "info")
+            else:
+                print_colored(f"Model: {mname}", "info")
+        except Exception:
+            pass
+
         try:
             model.train(data)
         except Exception as e:
@@ -744,8 +823,7 @@ def run_interactive_mode(
             continue
 
         try:
-            raw_forecast = model.forecast(forecast_days)
-            forecast = normalize_forecast(raw_forecast, days=forecast_days)
+            forecast = _forecast_with_retry(model, forecast_days, max_retries=retries)
         except TrainingError as e:
             print_colored(f"✗ {model_type} forecast failed: {e}", "error")
             logger.debug(traceback.format_exc())
@@ -754,6 +832,11 @@ def run_interactive_mode(
             print_colored(f"✗ {model_type} forecast failed: {e}", "error")
             logger.debug(traceback.format_exc())
             continue
+
+        # Optional in-sample metrics
+        ins = _in_sample_metrics_if_available(model, data)
+        if ins:
+            print_colored(f"Training metrics — RMSE: {ins['rmse']}, MAPE: {ins['mape']}%", "info")
 
         results[model_type] = {
             "model": model,
@@ -832,7 +915,7 @@ def _run_self_tests() -> int:
         "timestamp": pd.date_range("2024-01-01", periods=3, freq="D"),
         "close": [1.0, 1.1, 1.2],
     })
-    art = package_competition_artifacts(model="dummy", forecast=[1, 1, 1], data=df)
+    art = package_competition_artifacts(model="dummy", forecast=[1, 1, 1], data=df, asset="ETH", csv_path="/tmp/eth.csv")
     _assert("artifact has confidence", "confidence" in art and isinstance(art["confidence"], float))
     _assert("artifact has metadata", "metadata" in art and "metrics" in art["metadata"]) 
 
@@ -870,6 +953,37 @@ def _run_self_tests() -> int:
         finally:
             DATA_DIR = old_data
 
+    # 11) forecast retry wrapper with a flaky dummy model
+    class Flaky:
+        def __init__(self):
+            self.n = 0
+        def train(self, *_args, **_kwargs):
+            return None
+        def forecast(self, h):
+            self.n += 1
+            if self.n < 2:
+                raise RuntimeError("fluke")
+            return [1.0] * h
+    f = Flaky()
+    f.train(None)
+    out = _forecast_with_retry(f, 5, max_retries=2)
+    _assert("forecast retry eventually succeeds", len(out) == 5 and all(x == 1.0 for x in out))
+
+    # 12) in-sample metrics path using a tiny dummy model
+    class Echo:
+        def train(self, *_a, **_k):
+            return None
+        def predict(self, df):
+            return df.get("close", pd.Series(np.ones(len(df))))
+    em = Echo()
+    df_small = pd.DataFrame({"close": [1.0, 1.2, 1.1, 1.3]})
+    ins = _in_sample_metrics_if_available(em, df_small)
+    _assert("in-sample metrics computed", ins is not None and set(ins.keys()) == {"rmse","mape"})
+
+    # 13) parse_args includes new flags
+    ap = parse_args(["--competition", "--model", "lstm", "--asset", "BTC", "--retry", "1"])  # type: ignore[arg-type]
+    _assert("argparse supports --model/--asset/--retry", getattr(ap, "model") == "lstm" and getattr(ap, "asset") == "BTC" and getattr(ap, "retry") == 1)
+
     return failures
 
 
@@ -882,8 +996,8 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
 
     # Non-interactive / CI flags
     p.add_argument("--non-interactive", action="store_true", help="Disable prompts; use flags")
-    p.add_argument("--horizon", type=int, default=FORECAST_DAYS, help="Forecast horizon in days")
-    p.add_argument("--seed", type=int, default=DEFAULT_SEED, help="Global RNG seed")
+    p.add_argument("--horizon", type=int, default=int(os.getenv("HORIZON", str(FORECAST_DAYS))), help="Forecast horizon in days")
+    p.add_argument("--seed", type=int, default=int(os.getenv("SEED", str(DEFAULT_SEED))), help="Global RNG seed")
     p.add_argument("--verbose", action="store_true", help="Enable debug logging and tracebacks")
     p.add_argument("--self-test", action="store_true", help="Run built-in unit tests and exit")
 
@@ -895,9 +1009,15 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     p.add_argument("--end-date", dest="end_date", help="End date YYYY-MM-DD")
     p.add_argument("--csv", dest="csv_path", help="Path to CSV when --source=csv")
 
+    # Competition/general flags
+    p.add_argument("--model", default=os.getenv("MODEL", "prophet"), help="Model name for competition mode (e.g., prophet, lstm, xgboost)")
+    p.add_argument("--asset", default=os.getenv("ASSET", DEFAULT_ASSET), help="Asset symbol for competition CSV discovery (e.g., ETH, BTC, SOL)")
+    p.add_argument("--dataset", default=os.getenv("ETH_CSV"), help="Explicit dataset CSV path for competition mode")
+    p.add_argument("--retry", type=int, default=int(os.getenv("RETRY", "2")), help="Max retries for forecast generation")
+
     # Model selection flags
-    p.add_argument("--all-models", dest="all_models", action="store_true", help="Train all models")
-    p.add_argument("--first-model-only", dest="first_model_only", action="store_true", help="Train only the first model in configs.models")
+    p.add_argument("--all-models", dest="all_models", action="store_true", help="Train all models (interactive mode)")
+    p.add_argument("--first-model-only", dest="first_model_only", action="store_true", help="Train only the first model in configs.models (interactive mode)")
 
     return p.parse_args(argv)
 
@@ -926,10 +1046,15 @@ def main(argv: List[str] | None = None) -> None:
     try:
         if args.competition:
             print_colored("=== ALLORA MDK COMPETITION MODE ===", "header")
-            _ = run_competition_mode()
+            _ = run_competition_mode(
+                model_name=args.model,
+                asset=args.asset,
+                dataset=args.dataset,
+                horizon=int(args.horizon),
+                retries=int(args.retry),
+            )
         elif args.benchmark:
             print_colored("=== BENCHMARK MODE ===", "header")
-            # (Reserved) Implement benchmarking pipeline as needed.
             print_colored("Benchmark mode is not yet implemented.", "warning")
         else:
             print_colored("=== INTERACTIVE TRAINING MODE ===", "header")
@@ -941,8 +1066,9 @@ def main(argv: List[str] | None = None) -> None:
                 start_date=args.start_date,
                 end_date=args.end_date,
                 csv=args.csv_path,
-                horizon=args.horizon,
+                horizon=int(args.horizon),
                 use_all_models=False if args.first_model_only else True if args.all_models else True,
+                retries=int(args.retry),
             )
 
     except TrainingError as e:
