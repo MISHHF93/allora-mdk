@@ -1,0 +1,103 @@
+.
+├── LICENSE
+├── Makefile
+├── README.md
+├── allonode-data
+│   ├── example.config.json
+│   └── generate_envfile.py
+├── configs.py
+├── data
+│   ├── __init__.py
+│   ├── coingecko_data_fetcher.py
+│   ├── csv_loader.py
+│   ├── test_tingo.py
+│   ├── tiingo_data_fetcher.py
+│   └── utils
+│       ├── Ethereum_1_1_2016-9_6_2024_historical_data_coinmarketcap.csv
+│       ├── csv_standardizer.py
+│       └── data_preprocessing.py
+├── docker
+│   ├── Dockerfile
+│   ├── dev.Dockerfile
+│   └── dev.docker-compose.yaml
+├── endpoints
+│   ├── get
+│   │   ├── inference.py
+│   │   └── update_model.py
+│   └── post
+│       └── inference.py
+├── environment.yml
+├── main.py
+├── metrics
+│   ├── base_metric.py
+│   ├── cagr
+│   │   ├── configs.py
+│   │   └── metric.py
+│   ├── calmar_ratio
+│   │   ├── configs.py
+│   │   └── metric.py
+│   ├── expected_shortfall
+│   │   └── metric.py
+│   ├── maximum_drawdown
+│   │   └── metric.py
+│   ├── mdd_duration
+│   │   └── metric.py
+│   ├── metric_factory.py
+│   ├── sharpe_ratio
+│   │   ├── configs.py
+│   │   └── metric.py
+│   ├── sortino_ratio
+│   │   ├── configs.py
+│   │   └── metric.py
+│   ├── value_at_risk
+│   │   └── metric.py
+│   └── volatility
+│       ├── configs.py
+│       └── metric.py
+├── models
+│   ├── arima
+│   │   ├── configs.py
+│   │   ├── model.py
+│   │   └── utils.py
+│   ├── base_model.py
+│   ├── lstm
+│   │   ├── configs.py
+│   │   └── model.py
+│   ├── model_factory.py
+│   ├── prophet
+│   │   ├── configs.py
+│   │   └── model.py
+│   ├── random_forest
+│   │   ├── configs.py
+│   │   └── model.py
+│   ├── random_forest_time_series
+│   │   ├── configs.py
+│   │   └── model.py
+│   ├── regression
+│   │   ├── configs.py
+│   │   └── model.py
+│   ├── regression_time_series
+│   │   ├── configs.py
+│   │   └── model.py
+│   ├── xgboost
+│   │   ├── configs.py
+│   │   └── model.py
+│   └── xgboost_time_series
+│       ├── configs.py
+│       └── model.py
+├── oryx-build-commands.txt
+├── package_model_worker.py
+├── requirements.txt
+├── settings
+│   ├── crontab
+│   └── supervisord.conf
+├── test.py
+├── train (3).py
+├── train.py
+├── tree.txt
+└── utils
+    ├── __init__.py
+    ├── common.py
+    └── model_commons.py
+
+30 directories, 71 files
