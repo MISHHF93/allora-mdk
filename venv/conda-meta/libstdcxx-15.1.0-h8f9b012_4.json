@@ -1,0 +1,64 @@
+{
+  "build": "h8f9b012_4",
+  "build_number": 4,
+  "channel": "https://conda.anaconda.org/conda-forge/linux-64",
+  "constrains": [],
+  "depends": [
+    "__glibc >=2.17,<3.0.a0",
+    "libgcc 15.1.0 h767d61c_4"
+  ],
+  "extracted_package_dir": "/opt/conda/pkgs/libstdcxx-15.1.0-h8f9b012_4",
+  "files": [
+    "lib/libstdc++.so",
+    "lib/libstdc++.so.6",
+    "lib/libstdc++.so.6.0.34",
+    "share/licenses/libstdc++/RUNTIME.LIBRARY.EXCEPTION"
+  ],
+  "fn": "libstdcxx-15.1.0-h8f9b012_4.conda",
+  "license": "GPL-3.0-only WITH GCC-exception-3.1",
+  "link": {
+    "source": "/opt/conda/pkgs/libstdcxx-15.1.0-h8f9b012_4",
+    "type": 1
+  },
+  "md5": "3c376af8888c386b9d3d1c2701e2f3ab",
+  "name": "libstdcxx",
+  "package_tarball_full_path": "/opt/conda/pkgs/libstdcxx-15.1.0-h8f9b012_4.conda",
+  "paths_data": {
+    "paths": [
+      {
+        "_path": "lib/libstdc++.so",
+        "path_type": "softlink",
+        "sha256": "4627f9fad562753c843d6b1495e2441da895b0d9a7a6377e786a7704c747f40b",
+        "size_in_bytes": 14140344
+      },
+      {
+        "_path": "lib/libstdc++.so.6",
+        "path_type": "softlink",
+        "sha256": "4627f9fad562753c843d6b1495e2441da895b0d9a7a6377e786a7704c747f40b",
+        "size_in_bytes": 14140344
+      },
+      {
+        "_path": "lib/libstdc++.so.6.0.34",
+        "path_type": "hardlink",
+        "sha256": "4627f9fad562753c843d6b1495e2441da895b0d9a7a6377e786a7704c747f40b",
+        "sha256_in_prefix": "4627f9fad562753c843d6b1495e2441da895b0d9a7a6377e786a7704c747f40b",
+        "size_in_bytes": 14140344
+      },
+      {
+        "_path": "share/licenses/libstdc++/RUNTIME.LIBRARY.EXCEPTION",
+        "path_type": "hardlink",
+        "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+        "sha256_in_prefix": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+        "size_in_bytes": 3324
+      }
+    ],
+    "paths_version": 1
+  },
+  "requested_spec": "None",
+  "sha256": "b5b239e5fca53ff90669af1686c86282c970dd8204ebf477cf679872eb6d48ac",
+  "size": 3903453,
+  "subdir": "linux-64",
+  "timestamp": 1753903894000,
+  "url": "https://conda.anaconda.org/conda-forge/linux-64/libstdcxx-15.1.0-h8f9b012_4.conda",
+  "version": "15.1.0"
+}

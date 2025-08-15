@@ -1,0 +1,76 @@
+{
+  "build": "hb37ccd0_0",
+  "build_number": 0,
+  "channel": "https://conda.anaconda.org/conda-forge/linux-64",
+  "constrains": [
+    "sysroot_linux-64 >=2.17"
+  ],
+  "depends": [
+    "__glibc >=2.17,<3.0.a0",
+    "libcxxabi 19.1.0 h108a707_0",
+    "libgcc >=14"
+  ],
+  "extracted_package_dir": "/opt/conda/pkgs/libcxx-19.1.0-hb37ccd0_0",
+  "files": [
+    "lib/libc++.a",
+    "lib/libc++.so",
+    "lib/libc++.so.1",
+    "lib/libc++.so.1.0",
+    "lib/libc++experimental.a"
+  ],
+  "fn": "libcxx-19.1.0-hb37ccd0_0.conda",
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "link": {
+    "source": "/opt/conda/pkgs/libcxx-19.1.0-hb37ccd0_0",
+    "type": 1
+  },
+  "md5": "26c9acf9f78bca6fea14c1636f4ed784",
+  "name": "libcxx",
+  "package_tarball_full_path": "/opt/conda/pkgs/libcxx-19.1.0-hb37ccd0_0.conda",
+  "paths_data": {
+    "paths": [
+      {
+        "_path": "lib/libc++.a",
+        "path_type": "hardlink",
+        "sha256": "d813f6390b0f5c4cbc1d6928d4eaa2e238bd71e69d253949957dc1062ffe5d4d",
+        "sha256_in_prefix": "d813f6390b0f5c4cbc1d6928d4eaa2e238bd71e69d253949957dc1062ffe5d4d",
+        "size_in_bytes": 3138332
+      },
+      {
+        "_path": "lib/libc++.so",
+        "path_type": "hardlink",
+        "sha256": "6b59804adebc2333888ea20fd5ddd3eaff392a2a700bffd225fe17e38ef97b3f",
+        "sha256_in_prefix": "6b59804adebc2333888ea20fd5ddd3eaff392a2a700bffd225fe17e38ef97b3f",
+        "size_in_bytes": 28
+      },
+      {
+        "_path": "lib/libc++.so.1",
+        "path_type": "softlink",
+        "sha256": "bb9eda9203f8eeda4594474267121ddad9e00071d2c2bdc59f6818355234b8cb",
+        "size_in_bytes": 1543832
+      },
+      {
+        "_path": "lib/libc++.so.1.0",
+        "path_type": "hardlink",
+        "sha256": "bb9eda9203f8eeda4594474267121ddad9e00071d2c2bdc59f6818355234b8cb",
+        "sha256_in_prefix": "bb9eda9203f8eeda4594474267121ddad9e00071d2c2bdc59f6818355234b8cb",
+        "size_in_bytes": 1543832
+      },
+      {
+        "_path": "lib/libc++experimental.a",
+        "path_type": "hardlink",
+        "sha256": "ba317e0bc7ea5a5f41af3337a4b91a6563caef6e38b0ab139743060c59f11139",
+        "sha256_in_prefix": "ba317e0bc7ea5a5f41af3337a4b91a6563caef6e38b0ab139743060c59f11139",
+        "size_in_bytes": 1989868
+      }
+    ],
+    "paths_version": 1
+  },
+  "requested_spec": "libcxx=19.1.0",
+  "sha256": "3a2943a119d9de559fc5e6d3e3032a39925258969a2fe2cc2c1e32e1308deae7",
+  "size": 1022000,
+  "subdir": "linux-64",
+  "timestamp": 1726782554000,
+  "url": "https://conda.anaconda.org/conda-forge/linux-64/libcxx-19.1.0-hb37ccd0_0.conda",
+  "version": "19.1.0"
+}

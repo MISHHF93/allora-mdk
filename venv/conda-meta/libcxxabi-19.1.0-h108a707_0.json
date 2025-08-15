@@ -1,0 +1,66 @@
+{
+  "build": "h108a707_0",
+  "build_number": 0,
+  "channel": "https://conda.anaconda.org/conda-forge/linux-64",
+  "constrains": [
+    "libcxx 19.1.0.*"
+  ],
+  "depends": [
+    "__glibc >=2.17,<3.0.a0",
+    "libgcc >=14"
+  ],
+  "extracted_package_dir": "/opt/conda/pkgs/libcxxabi-19.1.0-h108a707_0",
+  "files": [
+    "lib/libc++abi.a",
+    "lib/libc++abi.so",
+    "lib/libc++abi.so.1",
+    "lib/libc++abi.so.1.0"
+  ],
+  "fn": "libcxxabi-19.1.0-h108a707_0.conda",
+  "license": "Apache-2.0 WITH LLVM-exception",
+  "link": {
+    "source": "/opt/conda/pkgs/libcxxabi-19.1.0-h108a707_0",
+    "type": 1
+  },
+  "md5": "8d541be23b90800f78790d129adb44c6",
+  "name": "libcxxabi",
+  "package_tarball_full_path": "/opt/conda/pkgs/libcxxabi-19.1.0-h108a707_0.conda",
+  "paths_data": {
+    "paths": [
+      {
+        "_path": "lib/libc++abi.a",
+        "path_type": "hardlink",
+        "sha256": "b03a5dbadd9088c701906d288e71d4ac85b058a720ac3ee28621eb5761679638",
+        "sha256_in_prefix": "b03a5dbadd9088c701906d288e71d4ac85b058a720ac3ee28621eb5761679638",
+        "size_in_bytes": 713776
+      },
+      {
+        "_path": "lib/libc++abi.so",
+        "path_type": "softlink",
+        "sha256": "75017f5330f7ee7bdf9651573fe83ce21c886895e93c527e12b70c2245cd0627",
+        "size_in_bytes": 342560
+      },
+      {
+        "_path": "lib/libc++abi.so.1",
+        "path_type": "softlink",
+        "sha256": "75017f5330f7ee7bdf9651573fe83ce21c886895e93c527e12b70c2245cd0627",
+        "size_in_bytes": 342560
+      },
+      {
+        "_path": "lib/libc++abi.so.1.0",
+        "path_type": "hardlink",
+        "sha256": "75017f5330f7ee7bdf9651573fe83ce21c886895e93c527e12b70c2245cd0627",
+        "sha256_in_prefix": "75017f5330f7ee7bdf9651573fe83ce21c886895e93c527e12b70c2245cd0627",
+        "size_in_bytes": 342560
+      }
+    ],
+    "paths_version": 1
+  },
+  "requested_spec": "None",
+  "sha256": "5facbaba87efbbaaf7f73fc9d32162b38800c5b4adf0e9aab60d43aa2b4978c2",
+  "size": 159273,
+  "subdir": "linux-64",
+  "timestamp": 1726782546000,
+  "url": "https://conda.anaconda.org/conda-forge/linux-64/libcxxabi-19.1.0-h108a707_0.conda",
+  "version": "19.1.0"
+}
