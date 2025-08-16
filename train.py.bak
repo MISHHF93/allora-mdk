@@ -24,19 +24,19 @@ Key fixes in this revision:
 from __future__ import annotations
 
 import argparse
+import importlib
+import importlib.util
+import logging
+import os
+import random
+import sys
+import traceback
+import warnings
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Tuple, Union
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Allora Model Training CLI")
-    parser.add_argument("--non-interactive", action="store_true", help="Run without prompts")
-    parser.add_argument("--source", choices=["csv", "crypto", "stock"], help="Data source")
-    parser.add_argument("--csv", help="Path to CSV file")
-    parser.add_argument("--model", help="Model to train")
-    parser.add_argument("--horizon", type=int, default=DEFAULT_HORIZON, help="Forecast horizon")
-    parser.add_argument("--retry", type=int, default=DEFAULT_RETRY, help="Retry attempts for forecast")
-    return parser.parse_args()
-
-# ---- Data Loading & Selection -----------------------------------------------
-from datetime import datetime, timedelta
+import joblib
 import numpy as np
 import pandas as pd
 
@@ -490,51 +490,29 @@ def select_data(
     selection = input("Enter your choice (1/2/3): ").strip()
 
     if selection == "1":
-        symbol = input("Enter stock symbol (default: AAPL): ").strip() or "AAPL"
-        frequency = input("Enter frequency (daily, etc.): ").strip() or "daily"
-        start_date = input("Start date (YYYY-MM-DD): ").strip() or "2021-01-01"
+        symbol = input("Enter the stock symbol (default: AAPL): ").strip() or "AAPL"
+        frequency = input("Frequency (daily/weekly/monthly, default: daily): ").strip() or "daily"
+        start_date = input("Start date (YYYY-MM-DD, default: 2021-01-01): ").strip() or "2021-01-01"
         end_date = input(f"End date (YYYY-MM-DD, default: {default_end_date}): ").strip() or default_end_date
         return fetcher.fetch_tiingo_stock_data(symbol, start_date, end_date, frequency)
 
-    elif selection == "2":
+    if selection == "2":
         symbol = input("Enter crypto symbol (default: btcusd): ").strip() or "btcusd"
-        frequency = input("Enter frequency (1min, 5min, 15min, 1hour, 4hour, 1day): ").strip() or "1day"
-
-        valid_frequencies = ["1min", "5min", "15min", "1hour", "4hour", "1day"]
-        if frequency not in valid_frequencies:
-            print_colored(f"Invalid frequency '{frequency}', defaulting to '1day'", "warn")
-            frequency = "1day"
-
-        start_date = input("Start date (YYYY-MM-DD): ").strip() or "2021-01-01"
+        frequency = input("Frequency (1min/5min/1hour/1day, default: 1day): ").strip() or "1day"
+        start_date = input("Start date (YYYY-MM-DD, default: 2021-01-01): ").strip() or "2021-01-01"
         end_date = input(f"End date (YYYY-MM-DD, default: {default_end_date}): ").strip() or default_end_date
+        return fetcher.fetch_tiingo_crypto_data(symbol, start_date, end_date, frequency)
 
+    if selection == "3":
+        file_path = input("Enter CSV file path: ").strip()
         try:
-            data = fetcher.fetch_tiingo_crypto_data(symbol, start_date, end_date, frequency)
-            if data.empty:
-                raise ValueError("No crypto Tiingo data found.")
-
-            # Load and merge network data
-            network_data = load_network_data(symbol, start_date, end_date)
-            if not network_data.empty:
-                # 👉 Normalize date types before merging
-                data["date"] = pd.to_datetime(data["date"]).dt.tz_localize(None)
-                network_data["date"] = pd.to_datetime(network_data["date"])
-
-                data = pd.merge(data, network_data, on="date", how="left")
-                print("Merged network data into price dataset.")
-
-            return data
+            CSVLoader = importlib.import_module("data.csv_loader").CSVLoader  # type: ignore
+            return CSVLoader.load_csv(file_path)
         except Exception as e:
-            print_colored(f"Error fetching crypto data: {e}", "error")
-            sys.exit(1)
+            raise DataError(f"Failed to load CSV from '{file_path}': {e}") from e
 
-    elif selection == "3":
-        if file_path is None:
-            file_path = input("Enter CSV file path: ").strip()
-        return CSVLoader.load_csv(file_path)
+    raise DataError("Invalid data source selection; expected 1/2/3")
 
-    print_colored("Invalid data selection", "error")
-    sys.exit(1)
 
 # ---- Model Selection --------------------------------------------------------
 
@@ -547,12 +525,13 @@ def select_models(competition_mode: bool = False, *, non_interactive: bool = Fal
         return MODELS if use_all else MODELS[:1]
 
     print("Select models to train:")
-    print("1. All models\n2. Custom selection")
+    print("1. All models")
+    print("2. Custom selection")
     choice = input("Enter choice (1/2): ").strip()
 
     if choice == "1":
-        return models
-    elif choice == "2":
+        return MODELS
+    if choice == "2":
         print("Available models:")
         for i, model_name in enumerate(MODELS, 1):
             print(f"{i}. {model_name}")
@@ -569,20 +548,18 @@ def select_models(competition_mode: bool = False, *, non_interactive: bool = Fal
     raise ModelError("Invalid model selection; expected '1' or '2'")
 
 
-# ---- Forecast Helpers -------------------------------------------------------
-def forecast_with_retry(model, horizon, retries):
-    for _ in range(retries):
-        try:
-            return model.forecast(horizon)
-        except Exception as e:
-            print_colored(f"Forecast error: {e}, retrying...", "warn")
-    print_colored("Forecast failed after retries.", "error")
-    sys.exit(1)
+# ---- Competition Artifact Packaging -----------------------------------------
 
-def normalize_forecast(forecast: List[float], horizon: int):
-    if len(forecast) < horizon:
-        forecast += [forecast[-1]] * (horizon - len(forecast))
-    return forecast[:horizon]
+def _safe_range_from_data(data: pd.DataFrame) -> Tuple[str | None, str | None]:
+    if isinstance(data.index, pd.DatetimeIndex) and len(data.index) > 0:
+        return data.index.min().isoformat(), data.index.max().isoformat()
+    cols = _lower_cols_map(data)
+    if "timestamp" in cols:
+        ts = pd.to_datetime(data[cols["timestamp"]], errors="coerce").dropna()
+        if len(ts) > 0:
+            return ts.min().isoformat(), ts.max().isoformat()
+    return None, None
+
 
 def package_competition_artifacts(
     model: Any,
@@ -592,9 +569,9 @@ def package_competition_artifacts(
     """Create standardized artifact package for competition submission."""
     span_days = calculate_timespan(data)
     confidence = calculate_confidence(forecast)
-    metrics = compute_metrics(data["close"].values[-len(forecast):], forecast)
+    start_iso, end_iso = _safe_range_from_data(data)
 
-    artifact = {
+    return {
         "model": model,
         "forecast": forecast,
         "confidence": confidence,
@@ -713,11 +690,42 @@ def run_interactive_mode(
     DataFetcher = importlib.import_module("data.tiingo_data_fetcher").DataFetcher  # type: ignore
     fetcher = DataFetcher()
 
-    data = select_data(fetcher, source=args.source if args.non_interactive else None, file_path=args.csv)
-    data = preprocess_data(data)
+    results: Dict[str, Dict[str, Any]] = {}
 
-    factory = ModelFactory()
-    model_types = model_selection_input(args.model)
+    # Data selection and validation
+    data = select_data(
+        fetcher,
+        competition_mode=False,
+        source=source,
+        symbol=symbol,
+        frequency=frequency,
+        start_date=start_date,
+        end_date=end_date,
+        csv_path=csv,
+        non_interactive=non_interactive,
+    )
+
+    is_valid, msg = validate_dataframe(data)
+    if not is_valid:
+        raise DataError(f"Invalid data: {msg}")
+
+    try:
+        preprocess_data = _import_preprocess()
+        data = preprocess_data(data)
+    except Exception as e:
+        raise DataError(f"Preprocessing failed: {e}") from e
+
+    span_days = calculate_timespan(data)
+    print_colored(f"✓ Loaded data with {len(data)} rows ({span_days:.1f} days)", "info")
+
+    # Model selection
+    model_types = select_models(non_interactive=non_interactive, use_all=use_all_models)
+
+    # Forecast horizon
+    forecast_days = int(horizon)
+
+    # Train models and generate forecasts
+    ModelFactory = importlib.import_module("models.model_factory").ModelFactory  # type: ignore
 
     for model_type in model_types:
         print_colored(f"\n=== Training {model_type} model ===", "header")
