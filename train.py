@@ -5,12 +5,12 @@ import pandas as pd
 from datetime import datetime, timedelta
 import numpy as np
 
-from core.data.fetcher import DataFetcher
-from core.data.loader import CSVLoader
-from core.models.factory import ModelFactory
-from core.utils.plotting import plot_forecast
-from core.utils.evaluation import evaluate_model
-from core.utils.visuals import print_colored
+from data.tiingo_data_fetcher import DataFetcher
+from data.csv_loader import CSVLoader
+from models.model_factory import ModelFactory
+from utils.plotting import plot_forecast
+from utils.evaluate import evaluate_model
+from utils.visuals import print_colored
 
 # ---- Configuration & Environment ---------------------------------------------
 from dotenv import load_dotenv
