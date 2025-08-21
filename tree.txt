@@ -2,18 +2,38 @@
 ├── LICENSE
 ├── Makefile
 ├── README.md
+├── __pycache__
+│   ├── configs.cpython-310.pyc
+│   └── configs.cpython-312.pyc
 ├── allonode-data
 │   ├── example.config.json
 │   └── generate_envfile.py
+├── apply_phase1_refactor.sh
+├── artifacts
 ├── configs.py
 ├── data
 │   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-310.pyc
+│   │   ├── __init__.cpython-312.pyc
+│   │   ├── csv_loader.cpython-310.pyc
+│   │   ├── csv_loader.cpython-312.pyc
+│   │   ├── tiingo_data_fetcher.cpython-310.pyc
+│   │   └── tiingo_data_fetcher.cpython-312.pyc
 │   ├── coingecko_data_fetcher.py
 │   ├── csv_loader.py
+│   ├── sets
+│   │   ├── ETHUSD_2025-07-17_to_2025-08-15_1day.csv
+│   │   ├── ethusd_2025-07-17_to_2025-08-15_1day.csv
+│   │   ├── ethusd_2025-07-18_to_2025-08-15_1day.csv
+│   │   └── ethusd_2025-08-16_to_2025-08-17_1day.csv
 │   ├── test_tingo.py
 │   ├── tiingo_data_fetcher.py
 │   └── utils
 │       ├── Ethereum_1_1_2016-9_6_2024_historical_data_coinmarketcap.csv
+│       ├── __pycache__
+│       │   ├── data_preprocessing.cpython-310.pyc
+│       │   └── data_preprocessing.cpython-312.pyc
 │       ├── csv_standardizer.py
 │       └── data_preprocessing.py
 ├── docker
@@ -27,6 +47,7 @@
 │   └── post
 │       └── inference.py
 ├── environment.yml
+├── fix_fstring_patch.sh
 ├── main.py
 ├── metrics
 │   ├── base_metric.py
@@ -55,6 +76,11 @@
 │       ├── configs.py
 │       └── metric.py
 ├── models
+│   ├── __pycache__
+│   │   ├── base_model.cpython-310.pyc
+│   │   ├── base_model.cpython-312.pyc
+│   │   ├── model_factory.cpython-310.pyc
+│   │   └── model_factory.cpython-312.pyc
 │   ├── arima
 │   │   ├── configs.py
 │   │   ├── model.py
@@ -65,6 +91,8 @@
 │   │   └── model.py
 │   ├── model_factory.py
 │   ├── prophet
+│   │   ├── __pycache__
+│   │   │   └── model.cpython-310.pyc
 │   │   ├── configs.py
 │   │   └── model.py
 │   ├── random_forest
@@ -74,12 +102,20 @@
 │   │   ├── configs.py
 │   │   └── model.py
 │   ├── regression
+│   │   ├── __pycache__
+│   │   │   ├── configs.cpython-310.pyc
+│   │   │   └── model.cpython-310.pyc
 │   │   ├── configs.py
 │   │   └── model.py
 │   ├── regression_time_series
 │   │   ├── configs.py
 │   │   └── model.py
 │   ├── xgboost
+│   │   ├── __pycache__
+│   │   │   ├── configs.cpython-310.pyc
+│   │   │   ├── configs.cpython-312.pyc
+│   │   │   ├── model.cpython-310.pyc
+│   │   │   └── model.cpython-312.pyc
 │   │   ├── configs.py
 │   │   └── model.py
 │   └── xgboost_time_series
@@ -87,17 +123,35 @@
 │       └── model.py
 ├── oryx-build-commands.txt
 ├── package_model_worker.py
+├── patch_train_phase1.sh
+├── pyproject.toml
 ├── requirements.txt
 ├── settings
 │   ├── crontab
 │   └── supervisord.conf
+├── setup.py
 ├── test.py
-├── train (3).py
 ├── train.py
+├── train.py.bak
+├── train_backup_20250816_042839.py
+├── trained_models
+│   ├── regression
+│   │   ├── model.pkl
+│   │   └── scaler.pkl
+│   └── xgboost
+│       ├── model.pkl
+│       └── scaler.pkl
 ├── tree.txt
 └── utils
     ├── __init__.py
+    ├── __pycache__
+    │   ├── __init__.cpython-310.pyc
+    │   ├── __init__.cpython-312.pyc
+    │   ├── common.cpython-310.pyc
+    │   ├── common.cpython-312.pyc
+    │   ├── model_commons.cpython-310.pyc
+    │   └── model_commons.cpython-312.pyc
     ├── common.py
     └── model_commons.py
 
-30 directories, 71 files
+43 directories, 112 files

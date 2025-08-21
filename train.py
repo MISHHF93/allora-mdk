@@ -5,11 +5,12 @@ import pandas as pd
 from datetime import datetime, timedelta
 import numpy as np
 
-from data.tiingo_data_fetcher import DataFetcher
-from data.csv_loader import CSVLoader
+
+from Data.tiingo_data_fetcher import DataFetcher
+from Data.csv_loader import CSVLoader
 from models.model_factory import ModelFactory
 from utils.plotting import plot_forecast
-from utils.evaluate import evaluate_model
+from utils.evaluation import evaluate_model
 from utils.visuals import print_colored
 
 # ---- Configuration & Environment ---------------------------------------------
@@ -94,24 +95,37 @@ def select_data(fetcher, source=None, file_path=None):
 
 # ---- Evaluation & Confidence ------------------------------------------------
 def calculate_confidence(forecast):
-    std_value = forecast.std().mean()
+    std_value = forecast.std().mean() if hasattr(forecast, 'std') else 0.0
     confidence = max(0.85, min(0.99, 1 - std_value))
     return round(confidence, 2)
 
 # ---- Saving -----------------------------------------------------------------
 def save_artifact(model, forecast, data, model_type):
     confidence = calculate_confidence(forecast)
+    
+    latest_data = data.iloc[-1].to_dict() if not data.empty else {}
+
+    # Convert non-serializable objects (like Timestamp) to strings
+    latest_data_serializable = {
+        k: (str(v) if isinstance(v, (pd.Timestamp, datetime)) else v)
+        for k, v in latest_data.items()
+    }
+
     result = {
         "model": model_type,
-        "forecast": forecast.tolist(),
+        "forecast": forecast.tolist() if hasattr(forecast, 'tolist') else [],
         "confidence": confidence,
-        "latest_data": data.iloc[-1].to_dict()
+        "latest_data": latest_data_serializable
     }
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = os.path.join(ARTIFACTS_DIR, f"{model_type}_{timestamp}.json")
+
     with open(path, "w") as f:
         json.dump(result, f, indent=2)
+
     print_colored(f"Saved forecast and confidence to {path}", "info")
+
 
 # ---- Main -------------------------------------------------------------------
 def main():
@@ -140,13 +154,19 @@ def main():
         indices = input("Enter numbers (comma-separated): ").strip().split(',')
         selected_models = [all_models[int(i)-1] for i in indices if i.isdigit() and 0 < int(i) <= len(all_models)]
 
+    factory = ModelFactory()
+
     for model_type in selected_models:
         print(f"Training {model_type}...")
-        model = ModelFactory.create(model_type)
-        forecast = model.train_and_forecast(data)
-        save_artifact(model, forecast, data, model_type)
-        plot_forecast(data, forecast, title=model_type)
-        evaluate_model(data, forecast)
+        model = factory.create_model(model_type)
+
+        if hasattr(model, "train_and_forecast"):
+            forecast = model.train_and_forecast(data)
+            save_artifact(model, forecast, data, model_type)
+            plot_forecast(data, forecast, title=model_type)
+            evaluate_model(data, forecast)
+        else:
+            print_colored(f"Model '{model_type}' does not implement 'train_and_forecast'. Skipping.", "warn")
 
 if __name__ == "__main__":
     main()

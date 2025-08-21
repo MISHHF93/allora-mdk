@@ -64,3 +64,19 @@ class XgboostModel(Model):
     def forecast(self, steps: int) -> pd.DataFrame:
         # Dummy forecast logic for now
         return pd.DataFrame({"forecast": [0] * steps})
+
+    def train_and_forecast(self, data: pd.DataFrame, forecast_steps: int = 5):
+        """
+        Trains the model and returns forecast for the last `forecast_steps` rows in the data.
+        """
+        if self.debug:
+            print("Starting training for XGBoost...")
+
+        self.train(data)
+
+        # Use the most recent `forecast_steps` data to generate forecast
+        input_data = data.tail(forecast_steps)
+        prediction_df = self.inference(input_data)
+
+        # Return only the forecast values
+        return prediction_df["prediction"]
